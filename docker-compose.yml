@@ -288,7 +288,7 @@ configs:
 
             # Strip leading slash from Docker container names ("/portainer" -> "portainer")
             if exists(.container_name) {
-              .container_name = replace(string!(.container_name), r"^/", "")
+              .container_name = replace(string!(.container_name), r'^/', "")
             }
 
       sinks:
