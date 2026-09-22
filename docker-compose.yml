@@ -162,7 +162,6 @@ configs:
         # 1. VictoriaMetrics (Prometheus-compatible)
         # -----------------------------------------------------------------
         - name: VictoriaMetrics
-          uid: victoriametrics
           type: prometheus
           access: proxy
           url: http://victoriametrics:8428
@@ -176,7 +175,6 @@ configs:
         # 2. VictoriaLogs (Official victoriametrics-logs-datasource plugin)
         # -----------------------------------------------------------------
         - name: VictoriaLogs
-          uid: victorialogs
           type: victoriametrics-logs-datasource
           access: proxy
           url: http://victorialogs:9428
@@ -214,12 +212,19 @@ configs:
         "templating": {
           "list": [
             {
+              "name": "ds",
+              "label": "datasource",
+              "type": "datasource",
+              "query": "victoriametrics-logs-datasource",
+              "hide": 2
+            },
+            {
               "name": "container",
               "label": "container",
               "type": "query",
               "datasource": {
                 "type": "victoriametrics-logs-datasource",
-                "uid": "victorialogs"
+                "uid": "$${ds}"
               },
               "multi": true,
               "includeAll": true,
@@ -249,7 +254,7 @@ configs:
               "type": "query",
               "datasource": {
                 "type": "victoriametrics-logs-datasource",
-                "uid": "victorialogs"
+                "uid": "$${ds}"
               },
               "multi": true,
               "includeAll": true,
@@ -292,7 +297,7 @@ configs:
             "title": "Log volume by container",
             "datasource": {
               "type": "victoriametrics-logs-datasource",
-              "uid": "victorialogs"
+              "uid": "$${ds}"
             },
             "gridPos": {
               "x": 0,
@@ -305,7 +310,7 @@ configs:
                 "refId": "A",
                 "datasource": {
                   "type": "victoriametrics-logs-datasource",
-                  "uid": "victorialogs"
+                  "uid": "$${ds}"
                 },
                 "expr": "container_name:in($$container) stream:in($$stream) $$search",
                 "queryType": "hits",
@@ -352,7 +357,7 @@ configs:
             "title": "Logs",
             "datasource": {
               "type": "victoriametrics-logs-datasource",
-              "uid": "victorialogs"
+              "uid": "$${ds}"
             },
             "gridPos": {
               "x": 0,
@@ -365,7 +370,7 @@ configs:
                 "refId": "A",
                 "datasource": {
                   "type": "victoriametrics-logs-datasource",
-                  "uid": "victorialogs"
+                  "uid": "$${ds}"
                 },
                 "expr": "container_name:in($$container) stream:in($$stream) $$search",
                 "queryType": "instant",
