@@ -92,6 +92,7 @@ Set the environment variables in Portainer stack settings (refer to [.env.exampl
 | `POCKET_ID_CLIENT_SECRET` | Pocket-ID OIDC client secret | `<client-secret>` |
 | `GRAFANA_ADMIN_USER` | Fallback local admin user | `admin` |
 | `GRAFANA_ADMIN_PASSWORD` | Fallback local admin password | `<secure-password>` |
+| `GF_AUTH_DISABLE_LOGIN_FORM` | Hide the password login form (SSO only). Set `false` in Portainer to regain local admin login if Pocket-ID is down | `true` |
 | `VM_RETENTION_PERIOD` | VictoriaMetrics retention | `1y` |
 | `VLOGS_RETENTION_PERIOD` | VictoriaLogs retention | `30d` |
 
