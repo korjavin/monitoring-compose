@@ -1,0 +1,65 @@
+name: Vendor Images to GHCR
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'  # Weekly on Monday at 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull, tag, and re-push vendored images
+        env:
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          IMAGES=(
+            "grafana/grafana:latest ghcr.io/${REPO_OWNER}/monitoring-grafana-vendor"
+            "victoriametrics/victoria-metrics:latest ghcr.io/${REPO_OWNER}/monitoring-victoriametrics-vendor"
+            "victoriametrics/victoria-logs:latest ghcr.io/${REPO_OWNER}/monitoring-victorialogs-vendor"
+            "victoriametrics/vmagent:latest ghcr.io/${REPO_OWNER}/monitoring-vmagent-vendor"
+            "timberio/vector:latest-alpine ghcr.io/${REPO_OWNER}/monitoring-vector-vendor"
+          )
+
+          > vendor-digests.log
+          echo "# Vendored monitoring stack images generated on $(date -u)" >> vendor-digests.log
+
+          for entry in "${IMAGES[@]}"; do
+            read -r UPSTREAM GHCR <<< "$entry"
+            echo "Processing ${UPSTREAM} -> ${GHCR}:latest"
+            docker pull "${UPSTREAM}"
+            DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${UPSTREAM}" | cut -d@ -f2)
+            docker tag "${UPSTREAM}" "${GHCR}:latest"
+            docker push "${GHCR}:latest"
+            echo "Vendored ${UPSTREAM} -> ${GHCR}:latest (digest: ${DIGEST})"
+            echo "${GHCR}@${DIGEST}" >> vendor-digests.log
+          done
+
+      - name: Push deploy branch and trigger Portainer
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git checkout -B deploy
+          git add vendor-digests.log
+          git commit -m "chore: vendor monitoring stack images" || echo "Nothing to commit"
+          git push origin deploy --force
+
+      - name: Trigger Portainer Redeploy Webhook
+        uses: distributhor/workflow-webhook@2381f0e9c7b6bf061fb1405bd0804b8706116369 # v3.0.8
+        with:
+          webhook_url: ${{ secrets.PORTAINER_REDEPLOY_HOOK }}
+          webhook_secret: "trigger"

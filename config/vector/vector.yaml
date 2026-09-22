@@ -1,0 +1,41 @@
+# =================================================================
+# Vector Configuration: Docker Container Logs -> VictoriaLogs
+# =================================================================
+
+data_dir: /var/lib/vector
+
+sources:
+  # Ingest logs from all local Docker containers via the Docker socket
+  docker_logs:
+    type: docker_logs
+    exclude_containers:
+      # Exclude vector to avoid infinite log ingestion loop
+      - monitoring-vector
+      - vector
+
+transforms:
+  enrich_docker_logs:
+    type: remap
+    inputs:
+      - docker_logs
+    source: |
+      .host = get_hostname!()
+
+      # Strip leading slash from Docker container names ("/portainer" -> "portainer")
+      if exists(.container_name) {
+        .container_name = replace(string!(.container_name), r"^/", "")
+      }
+
+sinks:
+  victorialogs:
+    type: http
+    inputs:
+      - enrich_docker_logs
+    uri: "http://victorialogs:9428/insert/jsonline?_stream_fields=host,container_name,stream&_msg_field=message&_time_field=timestamp"
+    encoding:
+      codec: json
+    framing:
+      method: newline_delimited
+    request:
+      concurrency: adaptive
+      retry_attempts: 5

@@ -1,0 +1,138 @@
+
+services:
+  # =================================================================
+  # 1. Grafana - UI & Visualization
+  # =================================================================
+  grafana:
+    image: ${GRAFANA_IMAGE:-ghcr.io/korjavin/monitoring-grafana-vendor:latest}
+    container_name: ${GRAFANA_CONTAINER_NAME:-monitoring-grafana}
+    restart: unless-stopped
+    environment:
+      # --- Server & Base URL ---
+      GF_SERVER_ROOT_URL: https://${GRAFANA_HOST}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+
+      # --- Official VictoriaLogs Datasource Plugin ---
+      GF_INSTALL_PLUGINS: victoriametrics-logs-datasource
+
+      # --- Pocket-ID (OIDC) Authentication ---
+      GF_AUTH_GENERIC_OAUTH_ENABLED: ${GF_AUTH_GENERIC_OAUTH_ENABLED:-true}
+      GF_AUTH_GENERIC_OAUTH_NAME: ${GF_AUTH_GENERIC_OAUTH_NAME:-Pocket-ID}
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: ${POCKET_ID_CLIENT_ID}
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: ${POCKET_ID_CLIENT_SECRET}
+      GF_AUTH_GENERIC_OAUTH_SCOPES: openid profile email groups
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: https://${POCKET_ID_HOST}/authorize
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: https://${POCKET_ID_HOST}/api/oidc/token
+      GF_AUTH_GENERIC_OAUTH_API_URL: https://${POCKET_ID_HOST}/api/oidc/userinfo
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "contains(groups[*], 'admin') && 'Admin' || 'Viewer'"
+      GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: "true"
+      GF_AUTH_GENERIC_OAUTH_AUTO_LOGIN: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - internal
+      - traefik_network
+    depends_on:
+      - victoriametrics
+      - victorialogs
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK_NAME:-traefik_default}"
+      - "traefik.http.routers.grafana.rule=Host(`${GRAFANA_HOST}`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls.certresolver=${TRAEFIK_CERTRESOLVER:-myresolver}"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+
+  # =================================================================
+  # 2. VictoriaMetrics - Metrics Time Series Database
+  # =================================================================
+  victoriametrics:
+    image: ${VICTORIAMETRICS_IMAGE:-ghcr.io/korjavin/monitoring-victoriametrics-vendor:latest}
+    container_name: ${VICTORIAMETRICS_CONTAINER_NAME:-monitoring-victoriametrics}
+    restart: unless-stopped
+    command:
+      - "-storageDataPath=/victoria-metrics-data"
+      - "-retentionPeriod=${VM_RETENTION_PERIOD:-1y}"
+      - "-httpListenAddr=:8428"
+    volumes:
+      - vm-data:/victoria-metrics-data
+    networks:
+      - internal
+      - traefik_network
+
+  # =================================================================
+  # 3. VictoriaLogs - High-Performance Log Database
+  # =================================================================
+  victorialogs:
+    image: ${VICTORIALOGS_IMAGE:-ghcr.io/korjavin/monitoring-victorialogs-vendor:latest}
+    container_name: ${VICTORIALOGS_CONTAINER_NAME:-monitoring-victorialogs}
+    restart: unless-stopped
+    command:
+      - "-storageDataPath=/victoria-logs-data"
+      - "-retentionPeriod=${VLOGS_RETENTION_PERIOD:-30d}"
+      - "-httpListenAddr=:9428"
+    volumes:
+      - vmlogs-data:/victoria-logs-data
+    networks:
+      - internal
+      - traefik_network
+
+  # =================================================================
+  # 4. vmagent - Scrapes Metrics (Localhost, Containers, VM & VMLogs)
+  # =================================================================
+  vmagent:
+    image: ${VMAGENT_IMAGE:-ghcr.io/korjavin/monitoring-vmagent-vendor:latest}
+    container_name: ${VMAGENT_CONTAINER_NAME:-monitoring-vmagent}
+    restart: unless-stopped
+    command:
+      - "-promscrape.config=/etc/vmagent/scrape.yml"
+      - "-remoteWrite.url=http://victoriametrics:8428/api/v1/write"
+      - "-promscrape.configCheckInterval=30s"
+    volumes:
+      - ./config/vmagent/scrape.yml:/etc/vmagent/scrape.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - vmagent-data:/vmagentdata
+    networks:
+      - internal
+      - traefik_network
+    depends_on:
+      - victoriametrics
+
+  # =================================================================
+  # 5. Vector - Collects Logs from Docker & Portainer Containers
+  # =================================================================
+  vector:
+    image: ${VECTOR_IMAGE:-ghcr.io/korjavin/monitoring-vector-vendor:latest}
+    container_name: ${VECTOR_CONTAINER_NAME:-monitoring-vector}
+    restart: unless-stopped
+    volumes:
+      - ./config/vector/vector.yaml:/etc/vector/vector.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - vector-data:/var/lib/vector
+    networks:
+      - internal
+    depends_on:
+      - victorialogs
+
+networks:
+  internal:
+    name: ${INTERNAL_NETWORK_NAME:-monitoring_internal}
+  traefik_network:
+    external: true
+    name: ${TRAEFIK_NETWORK_NAME:-traefik_default}
+
+volumes:
+  grafana-data:
+    name: ${GRAFANA_DATA_VOLUME:-monitoring_grafana_data}
+  vm-data:
+    name: ${VM_DATA_VOLUME:-monitoring_vm_data}
+  vmlogs-data:
+    name: ${VMLOGS_DATA_VOLUME:-monitoring_vmlogs_data}
+  vmagent-data:
+    name: ${VMAGENT_DATA_VOLUME:-monitoring_vmagent_data}
+  vector-data:
+    name: ${VECTOR_DATA_VOLUME:-monitoring_vector_data}
