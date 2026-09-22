@@ -6,7 +6,7 @@ Docker Compose monitoring stack featuring **Grafana**, **VictoriaMetrics**, **Vi
 
 - **Grafana** (`:3000` via Traefik HTTPS) — Central observability dashboard with pre-provisioned VictoriaMetrics and VictoriaLogs datasources, plus Pocket-ID SSO.
 - **VictoriaMetrics** (`:8428` internal) — High-performance, resource-efficient Prometheus-compatible metrics time series database.
-- **VictoriaLogs** (`:9428` internal) — High-throughput, low-resource log database supporting LogsQL and Loki query interfaces.
+- **VictoriaLogs** (`:9428` internal) — High-throughput, low-resource log database queried with LogsQL.
 - **vmagent** (`:8429` internal) — Lightweight metrics scraper collecting internal metrics (VictoriaMetrics, VictoriaLogs, vmagent, Grafana) and local Docker containers via `docker_sd_configs`.
 - **Vector** (log collector) — Ships stdout/stderr logs from Portainer and all host Docker containers directly into VictoriaLogs via the Docker engine socket (`/var/run/docker.sock`).
 
@@ -85,6 +85,7 @@ Set the environment variables in Portainer stack settings (refer to [.env.exampl
 | Variable | Description | Example / Default |
 | :--- | :--- | :--- |
 | `GRAFANA_HOST` | Domain for Grafana UI | `grafana.example.com` |
+| `LOG_HOSTNAME` | `host` field on collected logs | `docker-host` |
 | `TRAEFIK_NETWORK_NAME` | External Traefik network | `traefik_default` |
 | `TRAEFIK_CERTRESOLVER` | Traefik ACME resolver | `myresolver` |
 | `POCKET_ID_HOST` | Pocket-ID domain | `id.example.com` |
@@ -104,7 +105,6 @@ Set the environment variables in Portainer stack settings (refer to [.env.exampl
 Grafana starts immediately with the following datasources provisioned:
 - **VictoriaMetrics** (Default, Prometheus type) — `http://victoriametrics:8428`
 - **VictoriaLogs** (Official `victoriametrics-logs-datasource` plugin) — `http://victorialogs:9428`
-- **VictoriaLogs (Loki API)** — `http://victorialogs:9428/select/loki`
 
 ### 2. Viewing Container Logs in Grafana
 1. Open Grafana → **Explore**.

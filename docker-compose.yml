@@ -113,6 +113,8 @@ services:
   vector:
     image: ${VECTOR_IMAGE:-ghcr.io/korjavin/monitoring-vector-vendor:latest}
     container_name: ${VECTOR_CONTAINER_NAME:-monitoring-vector}
+    # becomes the `host` log field (get_hostname), otherwise it's a random container id
+    hostname: ${LOG_HOSTNAME:-docker-host}
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -174,14 +176,10 @@ configs:
           url: http://victorialogs:9428
           editable: true
 
-        # -----------------------------------------------------------------
-        # 3. VictoriaLogs (Loki-compatible HTTP endpoint fallback)
-        # -----------------------------------------------------------------
+      # VictoriaLogs has no Loki query API (push only) — remove the old broken datasource
+      deleteDatasources:
         - name: VictoriaLogs (Loki API)
-          type: loki
-          access: proxy
-          url: http://victorialogs:9428/select/loki
-          editable: true
+          orgId: 1
   vmagent_scrape:
     content: |
       # =================================================================
@@ -291,6 +289,13 @@ configs:
             if exists(.container_name) {
               .container_name = replace(string!(.container_name), r'^/', "")
             }
+
+            # Keep only useful Docker labels; the rest are dozens of noisy label.* fields
+            .compose_project = .label."com.docker.compose.project"
+            .compose_service = .label."com.docker.compose.service"
+            del(.label)
+            del(.container_created_at)
+            del(.source_type)
 
       sinks:
         victorialogs:
