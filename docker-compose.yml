@@ -32,7 +32,9 @@ services:
       GF_AUTH_DISABLE_LOGIN_FORM: "false"
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    configs:
+      - source: grafana_datasources
+        target: /etc/grafana/provisioning/datasources/datasources.yaml
     networks:
       - internal
       - traefik_network
@@ -93,9 +95,11 @@ services:
       - "-remoteWrite.url=http://victoriametrics:8428/api/v1/write"
       - "-promscrape.configCheckInterval=30s"
     volumes:
-      - ./config/vmagent/scrape.yml:/etc/vmagent/scrape.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - vmagent-data:/vmagentdata
+    configs:
+      - source: vmagent_scrape
+        target: /etc/vmagent/scrape.yml
     networks:
       - internal
       - traefik_network
@@ -110,9 +114,11 @@ services:
     container_name: ${VECTOR_CONTAINER_NAME:-monitoring-vector}
     restart: unless-stopped
     volumes:
-      - ./config/vector/vector.yaml:/etc/vector/vector.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - vector-data:/var/lib/vector
+    configs:
+      - source: vector_config
+        target: /etc/vector/vector.yaml
     networks:
       - internal
     depends_on:
@@ -136,3 +142,165 @@ volumes:
     name: ${VMAGENT_DATA_VOLUME:-monitoring_vmagent_data}
   vector-data:
     name: ${VECTOR_DATA_VOLUME:-monitoring_vector_data}
+
+# ponytail: inline configs, not ./config bind mounts — Portainer clones the repo inside its own
+# container, so relative host paths don't exist and Docker mounts empty dirs instead.
+configs:
+  grafana_datasources:
+    content: |
+      apiVersion: 1
+
+      datasources:
+        # -----------------------------------------------------------------
+        # 1. VictoriaMetrics (Prometheus-compatible)
+        # -----------------------------------------------------------------
+        - name: VictoriaMetrics
+          type: prometheus
+          access: proxy
+          url: http://victoriametrics:8428
+          isDefault: true
+          jsonData:
+            httpMethod: POST
+            timeInterval: 15s
+          editable: true
+
+        # -----------------------------------------------------------------
+        # 2. VictoriaLogs (Official victoriametrics-logs-datasource plugin)
+        # -----------------------------------------------------------------
+        - name: VictoriaLogs
+          type: victoriametrics-logs-datasource
+          access: proxy
+          url: http://victorialogs:9428
+          editable: true
+
+        # -----------------------------------------------------------------
+        # 3. VictoriaLogs (Loki-compatible HTTP endpoint fallback)
+        # -----------------------------------------------------------------
+        - name: VictoriaLogs (Loki API)
+          type: loki
+          access: proxy
+          url: http://victorialogs:9428/select/loki
+          editable: true
+  vmagent_scrape:
+    content: |
+      # =================================================================
+      # vmagent Prometheus Scrape Configuration
+      # =================================================================
+
+      global:
+        scrape_interval: 15s
+        scrape_timeout: 10s
+
+      scrape_configs:
+        # ---------------------------------------------------------------
+        # 1. VictoriaMetrics internal metrics
+        # ---------------------------------------------------------------
+        - job_name: "victoriametrics"
+          static_configs:
+            - targets: ["victoriametrics:8428"]
+              labels:
+                service: "victoriametrics"
+
+        # ---------------------------------------------------------------
+        # 2. VictoriaLogs internal metrics
+        # ---------------------------------------------------------------
+        - job_name: "victorialogs"
+          static_configs:
+            - targets: ["victorialogs:9428"]
+              labels:
+                service: "victorialogs"
+
+        # ---------------------------------------------------------------
+        # 3. vmagent internal metrics
+        # ---------------------------------------------------------------
+        - job_name: "vmagent"
+          static_configs:
+            - targets: ["localhost:8429"]
+              labels:
+                service: "vmagent"
+
+        # ---------------------------------------------------------------
+        # 4. Grafana internal metrics
+        # ---------------------------------------------------------------
+        - job_name: "grafana"
+          static_configs:
+            - targets: ["grafana:3000"]
+              labels:
+                service: "grafana"
+
+        # ---------------------------------------------------------------
+        # 5. Local Docker Container Service Discovery
+        # Discovers any container on the host Docker daemon having:
+        #   labels:
+        #     - "prometheus.scrape=true"
+        #     - "prometheus.port=9090"       # optional, default container port
+        #     - "prometheus.path=/metrics"   # optional, default /metrics
+        # ---------------------------------------------------------------
+        - job_name: "docker-containers"
+          docker_sd_configs:
+            - host: "unix:///var/run/docker.sock"
+          relabel_configs:
+            # Only keep containers with prometheus.scrape=true
+            - source_labels: [__meta_docker_container_label_prometheus_scrape]
+              regex: "true"
+              action: keep
+
+            # Label container name without leading slash
+            - source_labels: [__meta_docker_container_name]
+              regex: "/(.*)"
+              target_label: container_name
+              replacement: "$${1}"
+
+            # Allow custom metrics path
+            - source_labels: [__meta_docker_container_label_prometheus_path]
+              regex: "(.+)"
+              target_label: __metrics_path__
+
+            # Allow custom port override
+            - source_labels: [__address__, __meta_docker_container_label_prometheus_port]
+              regex: "([^:]+)(?::\\d+)?;(\\d+)"
+              replacement: "$${1}:$${2}"
+              target_label: __address__
+  vector_config:
+    content: |
+      # =================================================================
+      # Vector Configuration: Docker Container Logs -> VictoriaLogs
+      # =================================================================
+
+      data_dir: /var/lib/vector
+
+      sources:
+        # Ingest logs from all local Docker containers via the Docker socket
+        docker_logs:
+          type: docker_logs
+          exclude_containers:
+            # Exclude vector to avoid infinite log ingestion loop
+            - monitoring-vector
+            - vector
+
+      transforms:
+        enrich_docker_logs:
+          type: remap
+          inputs:
+            - docker_logs
+          source: |
+            .host = get_hostname!()
+
+            # Strip leading slash from Docker container names ("/portainer" -> "portainer")
+            if exists(.container_name) {
+              .container_name = replace(string!(.container_name), r"^/", "")
+            }
+
+      sinks:
+        victorialogs:
+          type: http
+          inputs:
+            - enrich_docker_logs
+          uri: "http://victorialogs:9428/insert/jsonline?_stream_fields=host,container_name,stream&_msg_field=message&_time_field=timestamp"
+          encoding:
+            codec: json
+          framing:
+            method: newline_delimited
+          request:
+            concurrency: adaptive
+            retry_attempts: 5
