@@ -57,9 +57,12 @@ Docker Compose monitoring stack featuring **Grafana**, **VictoriaMetrics**, **Vi
    - **Redirect URI**: `https://<GRAFANA_HOST>/login/generic_oauth`  
      *(e.g., `https://grafana.example.com/login/generic_oauth`)*
 4. Copy the generated **Client ID** and **Client Secret**.
-5. Ensure the user or group has access:
-   - Users in group `admin` will automatically receive the **Admin** role in Grafana.
-   - Other authenticated users will receive the **Viewer** role.
+5. Grant admin rights via a Pocket-ID group:
+   - Create a group whose **Name** (not Friendly name) is exactly `admin` — that is the value sent in the `groups` claim — and add your user to it.
+   - If the Grafana client has **Allowed user groups** set, include `admin` there.
+   - Members of `admin` become **Grafana server admin** (super admin) plus org **Admin** (`role_attribute_path` → `GrafanaAdmin`, `allow_assign_grafana_admin=true`).
+   - Other authenticated users get **Viewer**.
+   - Roles sync from Pocket-ID on every login, so manual role changes in the Grafana UI are overwritten; log out and back in after changing groups.
 
 ---
 
