@@ -107,6 +107,10 @@ Grafana starts immediately with the following datasources provisioned:
 - **VictoriaLogs** (Official `victoriametrics-logs-datasource` plugin) — `http://victorialogs:9428`
 
 ### 2. Viewing Container Logs in Grafana
+The provisioned **Monitoring → Container logs** dashboard shows log volume per container and the log stream, filterable by `container`, `stream` and a free-text LogsQL `search` box.
+
+Grafana's *Drilldown → Logs* app only works with Loki, so it can't be used with VictoriaLogs. For ad-hoc queries use Explore instead:
+
 1. Open Grafana → **Explore**.
 2. Select **VictoriaLogs** datasource.
 3. Query logs using **LogsQL**:

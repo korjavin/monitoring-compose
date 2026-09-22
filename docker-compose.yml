@@ -36,6 +36,10 @@ services:
     configs:
       - source: grafana_datasources
         target: /etc/grafana/provisioning/datasources/datasources.yaml
+      - source: grafana_dashboards_provider
+        target: /etc/grafana/provisioning/dashboards/dashboards.yaml
+      - source: grafana_dashboard_logs
+        target: /etc/grafana/dashboards/container-logs.json
     networks:
       - internal
       - traefik_network
@@ -158,6 +162,7 @@ configs:
         # 1. VictoriaMetrics (Prometheus-compatible)
         # -----------------------------------------------------------------
         - name: VictoriaMetrics
+          uid: victoriametrics
           type: prometheus
           access: proxy
           url: http://victoriametrics:8428
@@ -171,6 +176,7 @@ configs:
         # 2. VictoriaLogs (Official victoriametrics-logs-datasource plugin)
         # -----------------------------------------------------------------
         - name: VictoriaLogs
+          uid: victorialogs
           type: victoriametrics-logs-datasource
           access: proxy
           url: http://victorialogs:9428
@@ -180,6 +186,203 @@ configs:
       deleteDatasources:
         - name: VictoriaLogs (Loki API)
           orgId: 1
+  grafana_dashboards_provider:
+    content: |
+      apiVersion: 1
+      providers:
+        - name: Monitoring
+          folder: Monitoring
+          type: file
+          allowUiUpdates: true
+          options:
+            path: /etc/grafana/dashboards
+  # Generated JSON; edit in Grafana, export, paste back here (escape $$ as $$$$)
+  grafana_dashboard_logs:
+    content: |
+      {
+        "uid": "container-logs",
+        "title": "Container logs",
+        "tags": [
+          "logs"
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s",
+        "schemaVersion": 39,
+        "templating": {
+          "list": [
+            {
+              "name": "container",
+              "label": "container",
+              "type": "query",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "multi": true,
+              "includeAll": true,
+              "allValue": "*",
+              "current": {
+                "text": [
+                  "All"
+                ],
+                "value": [
+                  "$$__all"
+                ]
+              },
+              "refresh": 2,
+              "sort": 1,
+              "query": {
+                "refId": "A",
+                "type": "fieldValue",
+                "field": "container_name",
+                "query": "*",
+                "limit": 1000
+              },
+              "definition": "container_name"
+            },
+            {
+              "name": "stream",
+              "label": "stream",
+              "type": "query",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "multi": true,
+              "includeAll": true,
+              "allValue": "*",
+              "current": {
+                "text": [
+                  "All"
+                ],
+                "value": [
+                  "$$__all"
+                ]
+              },
+              "refresh": 2,
+              "sort": 1,
+              "query": {
+                "refId": "A",
+                "type": "fieldValue",
+                "field": "stream",
+                "query": "*",
+                "limit": 1000
+              },
+              "definition": "stream"
+            },
+            {
+              "name": "search",
+              "label": "search (LogsQL)",
+              "type": "textbox",
+              "query": "",
+              "current": {
+                "text": "",
+                "value": ""
+              }
+            }
+          ]
+        },
+        "panels": [
+          {
+            "id": 1,
+            "type": "timeseries",
+            "title": "Log volume by container",
+            "datasource": {
+              "type": "victoriametrics-logs-datasource",
+              "uid": "victorialogs"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 0,
+              "w": 24,
+              "h": 7
+            },
+            "targets": [
+              {
+                "refId": "A",
+                "datasource": {
+                  "type": "victoriametrics-logs-datasource",
+                  "uid": "victorialogs"
+                },
+                "expr": "container_name:in($$container) stream:in($$stream) $$search",
+                "queryType": "hits",
+                "fields": [
+                  "container_name"
+                ],
+                "fieldsLimit": 15,
+                "legendFormat": "{{container_name}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "custom": {
+                  "drawStyle": "bars",
+                  "fillOpacity": 80,
+                  "stacking": {
+                    "mode": "normal"
+                  },
+                  "lineWidth": 0
+                },
+                "displayName": "$${__field.labels.container_name}"
+              },
+              "overrides": []
+            },
+            "options": {
+              "legend": {
+                "displayMode": "table",
+                "placement": "right",
+                "calcs": [
+                  "sum"
+                ],
+                "sortBy": "Total",
+                "sortDesc": true
+              },
+              "tooltip": {
+                "mode": "multi",
+                "sort": "desc"
+              }
+            }
+          },
+          {
+            "id": 2,
+            "type": "logs",
+            "title": "Logs",
+            "datasource": {
+              "type": "victoriametrics-logs-datasource",
+              "uid": "victorialogs"
+            },
+            "gridPos": {
+              "x": 0,
+              "y": 7,
+              "w": 24,
+              "h": 22
+            },
+            "targets": [
+              {
+                "refId": "A",
+                "datasource": {
+                  "type": "victoriametrics-logs-datasource",
+                  "uid": "victorialogs"
+                },
+                "expr": "container_name:in($$container) stream:in($$stream) $$search",
+                "queryType": "instant",
+                "maxLines": 1000
+              }
+            ],
+            "options": {
+              "showTime": true,
+              "wrapLogMessage": true,
+              "sortOrder": "Descending",
+              "enableLogDetails": true,
+              "dedupStrategy": "none",
+              "prettifyLogMessage": false
+            }
+          }
+        ]
+      }
   vmagent_scrape:
     content: |
       # =================================================================
@@ -289,6 +492,9 @@ configs:
             if exists(.container_name) {
               .container_name = replace(string!(.container_name), r'^/', "")
             }
+
+            # Drop terminal color codes (e.g. Traefik's colored output)
+            .message = strip_ansi_escape_codes(string!(.message))
 
             # Keep only useful Docker labels; the rest are dozens of noisy label.* fields
             .compose_project = .label."com.docker.compose.project"
