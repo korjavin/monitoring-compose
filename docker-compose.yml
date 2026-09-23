@@ -40,6 +40,8 @@ services:
         target: /etc/grafana/provisioning/dashboards/dashboards.yaml
       - source: grafana_dashboard_logs
         target: /etc/grafana/dashboards/container-logs.json
+      - source: grafana_alerts
+        target: /etc/grafana/provisioning/alerting/host.yaml
     networks:
       - internal
       - traefik_network
@@ -130,6 +132,35 @@ services:
       - internal
     depends_on:
       - victorialogs
+
+  # =================================================================
+  # 6. node-exporter - Host Metrics (disk, CPU, memory)
+  # =================================================================
+  node-exporter:
+    image: ${NODE_EXPORTER_IMAGE:-ghcr.io/korjavin/monitoring-node-exporter-vendor:latest}
+    container_name: ${NODE_EXPORTER_CONTAINER_NAME:-monitoring-node-exporter}
+    restart: unless-stopped
+    command:
+      - "--path.rootfs=/host"
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - internal
+
+  # =================================================================
+  # 7. image-pruner - Daily removal of images no container uses
+  # =================================================================
+  # ponytail: plain sleep loop; there's a tiny race if it fires between a redeploy's pull and
+  # container create — move to a host cron/systemd timer if that ever bites.
+  image-pruner:
+    image: ${DOCKER_CLI_IMAGE:-ghcr.io/korjavin/monitoring-docker-cli-vendor:latest}
+    container_name: ${IMAGE_PRUNER_CONTAINER_NAME:-monitoring-image-pruner}
+    restart: unless-stopped
+    entrypoint: ["sh", "-c", "while true; do docker image prune -af; sleep 86400; done"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: none
 
 networks:
   internal:
@@ -388,6 +419,38 @@ configs:
           }
         ]
       }
+  # datasourceUid is the uid Grafana derives from the provisioned name "VictoriaMetrics"
+  grafana_alerts:
+    content: |
+      apiVersion: 1
+      groups:
+        - orgId: 1
+          name: host
+          folder: Monitoring
+          interval: 1m
+          rules:
+            - uid: host-disk-full
+              title: Host disk > 85%
+              condition: C
+              for: 5m
+              data:
+                - refId: A
+                  relativeTimeRange: {from: 300, to: 0}
+                  datasourceUid: P4169E866C3094E38
+                  model:
+                    refId: A
+                    instant: true
+                    expr: 100 * (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})
+                - refId: C
+                  datasourceUid: __expr__
+                  model:
+                    refId: C
+                    type: threshold
+                    expression: A
+                    conditions:
+                      - evaluator: {type: gt, params: [85]}
+              annotations:
+                summary: 'Root disk is {{ humanize $$values.A.Value }}% full'
   vmagent_scrape:
     content: |
       # =================================================================
@@ -434,6 +497,12 @@ configs:
             - targets: ["grafana:3000"]
               labels:
                 service: "grafana"
+
+        - job_name: "node-exporter"
+          static_configs:
+            - targets: ["node-exporter:9100"]
+              labels:
+                service: "node-exporter"
 
         # ---------------------------------------------------------------
         # 5. Local Docker Container Service Discovery

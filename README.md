@@ -9,6 +9,8 @@ Docker Compose monitoring stack featuring **Grafana**, **VictoriaMetrics**, **Vi
 - **VictoriaLogs** (`:9428` internal) — High-throughput, low-resource log database queried with LogsQL.
 - **vmagent** (`:8429` internal) — Lightweight metrics scraper collecting internal metrics (VictoriaMetrics, VictoriaLogs, vmagent, Grafana) and local Docker containers via `docker_sd_configs`.
 - **Vector** (log collector) — Ships stdout/stderr logs from Portainer and all host Docker containers directly into VictoriaLogs via the Docker engine socket (`/var/run/docker.sock`).
+- **node-exporter** (`:9100` internal) — Host metrics (disk, CPU, memory), scraped by vmagent.
+- **image-pruner** — Runs `docker image prune -af` once a day so images left behind by redeploys don't fill the disk.
 
 ---
 
@@ -127,7 +129,10 @@ Grafana's *Drilldown → Logs* app only works with Loki, so it can't be used wit
      container_name:portainer AND stream:stderr
      ```
 
-### 3. Automatic Metrics Scraping for Local Containers
+### 3. Host Disk Alert
+A provisioned Grafana alert rule **Monitoring → Host disk > 85%** fires when the root filesystem stays above 85% for 5 minutes. It has no notification channel; check it in **Alerting → Alert rules**, or attach a contact point in the UI.
+
+### 4. Automatic Metrics Scraping for Local Containers
 `vmagent` is configured with Prometheus `docker_sd_configs`. Any container on the host can opt into metrics scraping simply by adding Docker labels:
 
 ```yaml
@@ -137,7 +142,7 @@ labels:
   - "prometheus.path=/metrics"  # Optional: defaults to /metrics
 ```
 
-### 4. Direct Metrics Ingestion
+### 5. Direct Metrics Ingestion
 Applications or containers on the same network can push metrics directly to VictoriaMetrics using its standard entrypoints:
 - Prometheus Remote Write: `http://victoriametrics:8428/api/v1/write`
 - Influx line protocol: `http://victoriametrics:8428/write`
