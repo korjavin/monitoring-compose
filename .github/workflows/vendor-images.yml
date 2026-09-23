@@ -33,6 +33,8 @@ jobs:
             "victoriametrics/victoria-logs:latest ghcr.io/${REPO_OWNER}/monitoring-victorialogs-vendor"
             "victoriametrics/vmagent:latest ghcr.io/${REPO_OWNER}/monitoring-vmagent-vendor"
             "timberio/vector:latest-alpine ghcr.io/${REPO_OWNER}/monitoring-vector-vendor"
+            "prom/node-exporter:latest ghcr.io/${REPO_OWNER}/monitoring-node-exporter-vendor"
+            "docker:cli ghcr.io/${REPO_OWNER}/monitoring-docker-cli-vendor"
           )
 
           > vendor-digests.log
