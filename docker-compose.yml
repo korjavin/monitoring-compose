@@ -149,7 +149,7 @@ services:
       - internal
 
   # =================================================================
-  # 7. image-pruner - Daily removal of images no container uses
+  # 7. image-pruner - Hourly removal of images no container uses
   # =================================================================
   # ponytail: plain sleep loop; there's a tiny race if it fires between a redeploy's pull and
   # container create — move to a host cron/systemd timer if that ever bites.
@@ -157,7 +157,7 @@ services:
     image: ${DOCKER_CLI_IMAGE:-ghcr.io/korjavin/monitoring-docker-cli-vendor:latest}
     container_name: ${IMAGE_PRUNER_CONTAINER_NAME:-monitoring-image-pruner}
     restart: unless-stopped
-    entrypoint: ["sh", "-c", "while true; do docker image prune -af; sleep 86400; done"]
+    entrypoint: ["sh", "-c", "while true; do docker image prune -af; sleep 3600; done"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     network_mode: none

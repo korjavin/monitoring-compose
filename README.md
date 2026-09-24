@@ -10,7 +10,7 @@ Docker Compose monitoring stack featuring **Grafana**, **VictoriaMetrics**, **Vi
 - **vmagent** (`:8429` internal) — Lightweight metrics scraper collecting internal metrics (VictoriaMetrics, VictoriaLogs, vmagent, Grafana) and local Docker containers via `docker_sd_configs`.
 - **Vector** (log collector) — Ships stdout/stderr logs from Portainer and all host Docker containers directly into VictoriaLogs via the Docker engine socket (`/var/run/docker.sock`).
 - **node-exporter** (`:9100` internal) — Host metrics (disk, CPU, memory), scraped by vmagent.
-- **image-pruner** — Runs `docker image prune -af` once a day so images left behind by redeploys don't fill the disk.
+- **image-pruner** — Runs `docker image prune -af` every hour (stacks deployed per-commit pull a new image each time) so images left behind by redeploys don't fill the disk.
 
 ---
 
