@@ -1,0 +1,8 @@
+# Vendored monitoring stack images generated on Mon Nov  9 12:20:56 UTC 2026
+ghcr.io/korjavin/monitoring-grafana-vendor@sha256:488984b716c0862639f91a698adbe2862677a5a07bad42da5f03f3030883b205
+ghcr.io/korjavin/monitoring-victoriametrics-vendor@sha256:da8a90ac0912f16589be2b96a6441a2fca4bca415c83783d972d92e3b5b66970
+ghcr.io/korjavin/monitoring-victorialogs-vendor@sha256:251121fa882af99b95ba0c230a4a2f412ea602d2698c64a96c58dc9842bb755d
+ghcr.io/korjavin/monitoring-vmagent-vendor@sha256:d3229ab469c54ae5266e86246932266bad29b06668b5371acbd6d3de1b3035e7
+ghcr.io/korjavin/monitoring-vector-vendor@sha256:75a350f4ed468ef032a306e584469f01dedafa4dc98a52056461a8cf24a70a78
+ghcr.io/korjavin/monitoring-node-exporter-vendor@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
+ghcr.io/korjavin/monitoring-docker-cli-vendor@sha256:2357639ad1ea7d0194134bf3292622fd4e562483966ed674e5d7c945b5f3b28d
